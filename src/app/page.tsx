@@ -330,11 +330,7 @@ function DayCell({
   const today = new Date();
   const isToday = formatDate(dateObj) === formatDate(today);
   
-  // 식사별로 그룹화
-  const mealsByType = meals.reduce((acc, meal) => {
-    acc[meal.meal_type] = meal;
-    return acc;
-  }, {} as Record<MealType, Meal>);
+
 
   return (
     <div className={`bg-card border border-border rounded-lg min-h-[100px] p-1.5 transition-colors hover:bg-card/80 ${
@@ -500,11 +496,11 @@ function MealTypeDropdown({
   const dropdownRef = useRef<HTMLDivElement>(null);
 
   // 사용 가능한 식사 타입
-  const availableTypes: { type: MealType; info: any }[] = [
-    { type: 'breakfast', info: MEAL_INFO.breakfast },
-    { type: 'lunch', info: MEAL_INFO.lunch },
-    { type: 'dinner', info: MEAL_INFO.dinner },
-    { type: 'other', info: MEAL_INFO.other },
+  const availableTypes = [
+    { type: 'breakfast' as const, info: MEAL_INFO.breakfast },
+    { type: 'lunch' as const, info: MEAL_INFO.lunch },
+    { type: 'dinner' as const, info: MEAL_INFO.dinner },
+    { type: 'other' as const, info: MEAL_INFO.other },
   ].filter(item => !existingTypes.includes(item.type));
 
   // 외부 클릭 감지
