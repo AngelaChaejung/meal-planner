@@ -1,6 +1,7 @@
 import type { Metadata } from "next";
 import { Geist, Geist_Mono } from "next/font/google";
 import "./globals.css";
+import { QueryProvider } from '@/components/QueryProvider';
 
 const geistSans = Geist({
   variable: "--font-geist-sans",
@@ -21,7 +22,7 @@ export const metadata: Metadata = {
   },
   appleWebApp: {
     capable: true,
-    statusBarStyle: "black-translucent",
+    statusBarStyle: "default",
     title: "욱 & 채둥 식단관리",
   },
   formatDetection: {
@@ -48,7 +49,9 @@ export default function RootLayout({
       <body
         className={`${geistSans.variable} ${geistMono.variable} antialiased touch-manipulation transition-colors duration-300`}
       >
-        {children}
+        <QueryProvider>
+          {children}
+        </QueryProvider>
       </body>
     </html>
   );

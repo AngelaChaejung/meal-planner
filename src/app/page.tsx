@@ -11,6 +11,14 @@ import {
   formatDate
 } from '@/utils/date';
 import { mealService, weeklyMemoService, type Meal, type WeeklyMemo } from '@/lib/supabase';
+import { 
+  useMeals, 
+  useWeeklyMemos, 
+  useMealMutation, 
+  useDeleteMealMutation,
+  useWeeklyMemoMutation, 
+  useDeleteWeeklyMemoMutation 
+} from '@/hooks/useMealData';
 
 // 테마 훅
 function useTheme() {
@@ -74,15 +82,11 @@ const MEAL_INFO = {
 
 export default function HomePage() {
   const { theme, toggleTheme } = useTheme();
-  const [meals, setMeals] = useState<Meal[]>([]);
   const [selectedMeal, setSelectedMeal] = useState<{date: string, mealType: MealType} | null>(null);
   const [isModalOpen, setIsModalOpen] = useState(false);
-  const [error, setError] = useState<string | null>(null);
-  const [isLoading, setIsLoading] = useState(false);
   const [isRefreshing, setIsRefreshing] = useState(false);
   
   // 주간 메모 상태
-  const [weeklyMemos, setWeeklyMemos] = useState<{[weekStartDate: string]: WeeklyMemo}>({});
   const [selectedWeeklyMemo, setSelectedWeeklyMemo] = useState<string | null>(null);
   const [isWeeklyMemoModalOpen, setIsWeeklyMemoModalOpen] = useState(false);
   
@@ -144,75 +148,52 @@ export default function HomePage() {
     };
   }, [currentPeriodStart]);
 
-  // 데이터 로드 함수 (useCallback으로 분리하여 새로고침에서도 재사용)
-  const loadData = useCallback(async (isRefresh: boolean = false) => {
+  // React Query를 사용한 데이터 fetching
+  const { 
+    data: meals = [], 
+    isLoading, 
+    error: mealsError, 
+    refetch: refetchMeals 
+  } = useMeals(startDateStr, endDateStr);
+
+  const { 
+    data: weeklyMemos = {}, 
+    isLoading: memosLoading, 
+    error: memosError,
+    refetch: refetchMemos
+  } = useWeeklyMemos(weekStartDates);
+
+  // mutations
+  const mealMutation = useMealMutation();
+  const deleteMealMutation = useDeleteMealMutation();
+  const weeklyMemoMutation = useWeeklyMemoMutation();
+  const deleteWeeklyMemoMutation = useDeleteWeeklyMemoMutation();
+
+  // 통합된 로딩 상태와 에러 상태
+  const isLoadingData = isLoading || memosLoading;
+  const error = mealsError || memosError;
+
+  // 데이터 새로고침 함수 (React Query refetch 사용)
+  const refreshData = useCallback(async (isRefresh: boolean = false) => {
     try {
-      setError(null);
       if (isRefresh) {
         setIsRefreshing(true);
-      } else {
-        setIsLoading(true);
       }
       
-      console.log('📊 DB에서 데이터 로드 시작:', startDateStr, '~', endDateStr);
+      console.log('📊 데이터 새로고침 시작:', startDateStr, '~', endDateStr);
       
-      // 식사 데이터 로드
-      const mealsData = await mealService.getMealsByDateRange(startDateStr, endDateStr);
+      // React Query refetch 실행
+      await Promise.all([refetchMeals(), refetchMemos()]);
       
-      // 주간 메모 데이터 로드
-      const memoPromises = weekStartDates.map(async (weekStart) => {
-        try {
-          const memo = await weeklyMemoService.getWeeklyMemo(weekStart);
-          return { weekStart, memo };
-        } catch (error) {
-          console.log('주간 메모 로드 중 오류 (정상적일 수 있음):', error);
-          return { weekStart, memo: null };
-        }
-      });
-      const memoResults = await Promise.all(memoPromises);
-      
-      setMeals(mealsData);
-      
-      // 주간 메모 상태 업데이트
-      const memosMap: {[key: string]: WeeklyMemo} = {};
-      memoResults.forEach(({ weekStart, memo }) => {
-        if (memo) {
-          memosMap[weekStart] = memo;
-        }
-      });
-      setWeeklyMemos(memosMap);
-      
-      console.log('✅ 데이터 로드 완료:', mealsData.length, '개 식사,', Object.keys(memosMap).length, '개 주간 메모');
+      console.log('✅ 데이터 새로고침 완료');
     } catch (err) {
-      console.error('❌ 데이터 로드 오류:', err);
-      setError('데이터를 불러오는데 실패했습니다.');
+      console.error('❌ 데이터 새로고침 오류:', err);
     } finally {
       if (isRefresh) {
         setIsRefreshing(false);
-      } else {
-        setIsLoading(false);
       }
     }
-  }, [startDateStr, endDateStr, weekStartDates]);
-
-  // Supabase에서 데이터 로드
-  useEffect(() => {
-    let isCancelled = false;
-    
-    const loadInitialData = async () => {
-      if (!isCancelled) {
-        await loadData(false);
-      }
-    };
-
-    loadInitialData();
-    
-    // cleanup function
-    return () => {
-      isCancelled = true;
-      setIsLoading(false);
-    };
-  }, [loadData]);
+  }, [refetchMeals, refetchMemos, startDateStr, endDateStr]);
 
   // 네비게이션 핸들러 (역동적 스크롤 애니메이션)
   const handlePreviousPeriod = () => {
@@ -302,47 +283,26 @@ export default function HomePage() {
     setIsModalOpen(true);
   };
 
-  // 식사 저장 핸들러 (DB에 실제 저장)
+  // 식사 저장 핸들러 (React Query mutation 사용)
   const handleMealSave = async (mealData: { memo: string }) => {
     if (!selectedMeal) return;
 
+    const meal = {
+      date: selectedMeal.date,
+      mealType: selectedMeal.mealType,
+      memo: mealData.memo,
+      ...(currentMealData?.id && { id: currentMealData.id })
+    };
+
+    console.log('📝 식사 저장 (React Query):', meal);
+    
     try {
-      setError(null);
-      
-      const meal: Omit<Meal, 'id' | 'created_at' | 'updated_at'> = {
-        date: selectedMeal.date,
-        meal_type: selectedMeal.mealType,
-        memo: mealData.memo
-      };
-
-      console.log('📝 DB에 식사 저장:', meal);
-      
-      // Supabase에 실제 저장
-      const savedMeal = await mealService.upsertMeal(meal);
-      console.log('✅ 저장 완료:', savedMeal);
-      
-      // 로컬 상태 업데이트
-      setMeals(prev => {
-        const existingIndex = prev.findIndex(m => 
-          m.date === selectedMeal.date && m.meal_type === selectedMeal.mealType
-        );
-        
-        if (existingIndex >= 0) {
-          // 기존 식사 업데이트
-          const updated = [...prev];
-          updated[existingIndex] = savedMeal;
-          return updated;
-        } else {
-          // 새 식사 추가
-          return [...prev, savedMeal];
-        }
-      });
-
+      await mealMutation.mutateAsync(meal);
+      // 모달 닫기
       setIsModalOpen(false);
       setSelectedMeal(null);
-    } catch (err) {
-      console.error('❌ 식사 저장 오류:', err);
-      setError('식사를 저장하는데 실패했습니다.');
+    } catch (error) {
+      console.error('❌ 저장 실패:', error);
     }
   };
 
@@ -362,80 +322,52 @@ export default function HomePage() {
     setIsWeeklyMemoModalOpen(true);
   };
 
-  // 주간 메모 저장 핸들러
+  // 주간 메모 저장 핸들러 (React Query mutation 사용)
   const handleWeeklyMemoSave = async (weekStartDate: string, memo: string) => {
+    const existingMemo = weeklyMemos[weekStartDate];
+    const memoData = {
+      weekStartDate,
+      memo,
+      ...(existingMemo?.id && { id: existingMemo.id })
+    };
+
+    console.log('📝 주간 메모 저장 (React Query):', memoData);
+    
     try {
-      setError(null);
-      
-      const weeklyMemo = {
-        week_start_date: weekStartDate,
-        memo: memo
-      };
-
-      console.log('📝 주간 메모 저장:', weeklyMemo);
-      
-      const savedMemo = await weeklyMemoService.upsertWeeklyMemo(weeklyMemo);
-      console.log('✅ 주간 메모 저장 완료:', savedMemo);
-      
-      // 로컬 상태 업데이트
-      setWeeklyMemos(prev => ({
-        ...prev,
-        [weekStartDate]: savedMemo
-      }));
-
+      await weeklyMemoMutation.mutateAsync(memoData);
       setIsWeeklyMemoModalOpen(false);
       setSelectedWeeklyMemo(null);
-    } catch (err) {
-      console.error('❌ 주간 메모 저장 오류:', err);
-      setError('주간 메모를 저장하는데 실패했습니다.');
+    } catch (error) {
+      console.error('❌ 주간 메모 저장 실패:', error);
     }
   };
 
-  // 주간 메모 삭제 핸들러  
+  // 주간 메모 삭제 핸들러 (React Query mutation 사용)
   const handleWeeklyMemoDelete = async (weekStartDate: string) => {
     const memo = weeklyMemos[weekStartDate];
     if (!memo?.id) return;
 
+    console.log('🗑️ 주간 메모 삭제 (React Query):', memo.id);
+    
     try {
-      setError(null);
-      console.log('🗑️ 주간 메모 삭제:', memo.id);
-      
-      await weeklyMemoService.deleteWeeklyMemo(memo.id);
-      console.log('✅ 주간 메모 삭제 완료');
-      
-      // 로컬 상태에서 삭제
-      setWeeklyMemos(prev => {
-        const updated = { ...prev };
-        delete updated[weekStartDate];
-        return updated;
-      });
-      
+      await deleteWeeklyMemoMutation.mutateAsync(memo.id);
       setIsWeeklyMemoModalOpen(false);
       setSelectedWeeklyMemo(null);
-    } catch (err) {
-      console.error('❌ 주간 메모 삭제 오류:', err);
-      setError('주간 메모를 삭제하는데 실패했습니다.');
+    } catch (error) {
+      console.error('❌ 주간 메모 삭제 실패:', error);
     }
   };
 
-  // 식사 삭제 핸들러 (임시로 로컬에서만 삭제)
+  // 식사 삭제 핸들러 (React Query mutation 사용)
   const handleMealDelete = async (mealId: string) => {
+    console.log('🗑️ 식사 삭제 (React Query):', mealId);
+    
     try {
-      setError(null);
-      console.log('🗑️ DB에서 식사 삭제:', mealId);
-      
-      // Supabase에서 실제 삭제
-      await mealService.deleteMeal(mealId);
-      console.log('✅ 삭제 완료');
-      
-      // 로컬 상태에서 삭제
-      setMeals(prev => prev.filter(meal => meal.id !== mealId));
-      
+      await deleteMealMutation.mutateAsync(mealId);
       setIsModalOpen(false);
       setSelectedMeal(null);
-    } catch (err) {
-      console.error('❌ 식사 삭제 오류:', err);
-      setError('식사를 삭제하는데 실패했습니다.');
+    } catch (error) {
+      console.error('❌ 식사 삭제 실패:', error);
     }
   };
 
@@ -451,7 +383,7 @@ export default function HomePage() {
           <div className="text-base text-foreground mb-1">오류 발생</div>
           <div className="text-xs text-foreground/60 mb-4">{error}</div>
           <button
-            onClick={() => loadData(true)}
+            onClick={() => refreshData(true)}
             className="bg-primary text-primary-foreground px-3 py-1.5 rounded text-sm hover:opacity-90 transition-opacity"
             disabled={isRefreshing}
           >
@@ -524,7 +456,7 @@ export default function HomePage() {
             <div className="flex items-center gap-2">
               {/* 새로고침 버튼 */}
               <button
-                onClick={() => loadData(true)}
+                onClick={() => refreshData(true)}
                 className={`p-1.5 transition-colors rounded-full hover:bg-secondary ${
                   isRefreshing 
                     ? 'text-foreground/40 cursor-not-allowed' 
@@ -569,7 +501,7 @@ export default function HomePage() {
             </div>
             <div className="text-xs text-foreground/60 flex items-center justify-center">
               {startDateStr} ~ {endDateStr}
-              {isLoading && (
+              {isLoadingData && (
                 <div className="ml-2 flex items-center">
                   <div className={`w-2 h-2 rounded-full animate-pulse ${
                     theme === 'light' ? 'bg-orange-500' : 'bg-cyan-500'
