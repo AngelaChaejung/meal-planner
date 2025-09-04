@@ -10,7 +10,7 @@ import {
   getTwoWeekRangeFromDate,
   formatDate
 } from '@/utils/date';
-import { mealService, weeklyMemoService, type Meal, type WeeklyMemo } from '@/lib/supabase';
+import { type Meal, type WeeklyMemo } from '@/lib/supabase';
 import { 
   useMeals, 
   useWeeklyMemos, 
@@ -57,24 +57,28 @@ const MEAL_INFO = {
   breakfast: { 
     title: '아침', 
     shortTitle: '아',
+    emoji: '🌅',
     color: 'text-orange-500 bg-orange-500/10 dark:text-orange-400 dark:bg-orange-400/10',
     dotColor: 'bg-orange-500 dark:bg-orange-400'
   },
   lunch: { 
     title: '점심', 
     shortTitle: '점',
+    emoji: '🍽️',
     color: 'text-amber-600 bg-amber-500/10 dark:text-amber-400 dark:bg-amber-400/10',
     dotColor: 'bg-amber-600 dark:bg-amber-400'
   },
   dinner: { 
     title: '저녁', 
     shortTitle: '저',
+    emoji: '🌙',
     color: 'text-purple-600 bg-purple-500/10 dark:text-purple-400 dark:bg-purple-400/10',
     dotColor: 'bg-purple-600 dark:bg-purple-400'
   },
   other: {
     title: '기타',
     shortTitle: '기',
+    emoji: '🍴',
     color: 'text-gray-600 bg-gray-500/10 dark:text-gray-400 dark:bg-gray-400/10',
     dotColor: 'bg-gray-600 dark:bg-gray-400'
   }
@@ -89,6 +93,19 @@ export default function HomePage() {
   // 주간 메모 상태
   const [selectedWeeklyMemo, setSelectedWeeklyMemo] = useState<string | null>(null);
   const [isWeeklyMemoModalOpen, setIsWeeklyMemoModalOpen] = useState(false);
+
+  // 스낵바 상태
+  const [snackbar, setSnackbar] = useState<{
+    show: boolean;
+    message: string;
+    mealType: MealType;
+    date?: string;
+    meal?: Meal;
+  }>({
+    show: false,
+    message: '',
+    mealType: 'breakfast'
+  });
   
   // 스크롤 참조
   const containerRef = useRef<HTMLDivElement>(null);
@@ -277,10 +294,18 @@ export default function HomePage() {
     }
   }, []);
 
-  // 식사 추가/편집 핸들러
+  // 식사 클릭 핸들러 - 스낵바 표시 또는 모달 열기
   const handleMealClick = (date: string, mealType: MealType) => {
-    setSelectedMeal({ date, mealType });
-    setIsModalOpen(true);
+    const existingMeal = getMealByDateAndType(date, mealType);
+    
+    if (existingMeal && existingMeal.memo.trim()) {
+      // 기존 식사가 있으면 스낵바 표시
+      showSnackbar(existingMeal.memo, mealType, date, existingMeal);
+    } else {
+      // 기존 식사가 없으면 모달 열기
+      setSelectedMeal({ date, mealType });
+      setIsModalOpen(true);
+    }
   };
 
   // 식사 저장 핸들러 (React Query mutation 사용)
@@ -310,6 +335,23 @@ export default function HomePage() {
   const getMealByDateAndType = (date: string, mealType: MealType): Meal | undefined => {
     return meals.find(meal => meal.date === date && meal.meal_type === mealType);
   };
+
+  // 스낵바 표시 함수
+  const showSnackbar = (message: string, mealType: MealType, date?: string, meal?: Meal) => {
+    setSnackbar({
+      show: true,
+      message,
+      mealType,
+      date,
+      meal
+    });
+  };
+
+  // 스낵바 닫기 함수
+  const hideSnackbar = () => {
+    setSnackbar(prev => ({ ...prev, show: false }));
+  };
+
   
   // 날짜가 현재 데이터 로드 범위에 있는지 확인
   const isDateInDataRange = (date: string): boolean => {
@@ -381,7 +423,7 @@ export default function HomePage() {
         <div className="text-center">
           <div className="text-3xl mb-3">❌</div>
           <div className="text-base text-foreground mb-1">오류 발생</div>
-          <div className="text-xs text-foreground/60 mb-4">{error}</div>
+          <div className="text-xs text-foreground/60 mb-4">{error?.message || '알 수 없는 오류가 발생했습니다.'}</div>
           <button
             onClick={() => refreshData(true)}
             className="bg-primary text-primary-foreground px-3 py-1.5 rounded text-sm hover:opacity-90 transition-opacity"
@@ -582,7 +624,7 @@ export default function HomePage() {
       <div className="p-2 pt-4" ref={containerRef}>
 
         {/* 날짜 그리드 - 데스크탑 (4주분) */}
-        <div className="hidden min-[451px]:block space-y-1">
+        <div className="hidden min-[451px]:block space-y-4">
           {/* 이전 주 (빈 박스) - 위쪽 스크롤 타겟 */}
           <div className="grid grid-cols-8 gap-1 opacity-60" ref={prevWeekRef}>
             {allDates.slice(0, 7).map((date) => (
@@ -671,9 +713,9 @@ export default function HomePage() {
         </div>
 
         {/* 날짜 그리드 - 모바일 (4주분, 월~목/금~일 분할) */}
-        <div className="block min-[451px]:hidden space-y-2">
+        <div className="block min-[451px]:hidden space-y-5">
           {/* 이전 주 (빈 박스) - 위쪽 스크롤 타겟 */}
-          <div className="space-y-1 opacity-60" ref={prevWeekRef}>
+          <div className="space-y-2 opacity-60" ref={prevWeekRef}>
             {/* 월~목 */}
             <div className="grid grid-cols-4 gap-1">
               {allDates.slice(0, 4).map((date) => (
@@ -711,7 +753,7 @@ export default function HomePage() {
           </div>
           
           {/* 현재 첫째 주 - 메인 스크롤 타겟 */}
-          <div className="space-y-1" ref={currentWeekRef}>
+          <div className="space-y-2" ref={currentWeekRef}>
             {/* 월~목 */}
             <div className="grid grid-cols-4 gap-1">
               {allDates.slice(7, 11).map((date) => (
@@ -748,7 +790,7 @@ export default function HomePage() {
           </div>
           
           {/* 현재 둘째 주 */}
-          <div className="space-y-1">
+          <div className="space-y-2">
             {/* 월~목 */}
             <div className="grid grid-cols-4 gap-1">
               {allDates.slice(14, 18).map((date) => (
@@ -854,6 +896,22 @@ export default function HomePage() {
           theme={theme}
         />
       )}
+
+      {/* 식사 내용 스낵바 */}
+      <MealSnackbar
+        show={snackbar.show}
+        message={snackbar.message}
+        mealType={snackbar.mealType}
+        theme={theme}
+        onClose={hideSnackbar}
+        onEdit={() => {
+          if (snackbar.date && snackbar.meal) {
+            setSelectedMeal({ date: snackbar.date, mealType: snackbar.mealType });
+            setIsModalOpen(true);
+            hideSnackbar();
+          }
+        }}
+      />
     </div>
   );
 }
@@ -875,9 +933,6 @@ function WeeklyMemoCell({
   const weekStartObj = new Date(weekStartDate);
   const weekEndObj = new Date(weekStartObj);
   weekEndObj.setDate(weekEndObj.getDate() + 6);
-  
-  const weekRange = `${weekStartObj.getMonth() + 1}/${weekStartObj.getDate()}-${weekEndObj.getDate()}`;
-
 
   return (
     <button
@@ -1377,5 +1432,108 @@ function DeleteButton({
     >
       삭제하기
     </button>
+  );
+}
+
+// 스낵바 컴포넌트
+function MealSnackbar({
+  show,
+  message,
+  mealType,
+  theme,
+  onClose,
+  onEdit
+}: {
+  show: boolean;
+  message: string;
+  mealType: MealType;
+  theme: 'light' | 'dark';
+  onClose: () => void;
+  onEdit: () => void;
+}) {
+  if (!show) return null;
+
+  const mealInfo = MEAL_INFO[mealType];
+  
+  return (
+    <>
+      {/* 배경 오버레이 - 외부 클릭 감지 */}
+      <div 
+        className="fixed inset-0 z-[99]" 
+        onClick={onClose}
+      />
+      
+      {/* 스낵바 */}
+      <div className="fixed left-1/2 transform -translate-x-1/2 z-[100] animate-in slide-in-from-top-2 duration-300 px-4" style={{ top: '30%' }}>
+        <div 
+          className="px-3 py-2 rounded-lg shadow-lg w-full relative"
+          style={{
+            maxWidth: window.innerWidth <= 430 ? '65vw' : '500px',
+            background: (() => {
+              switch (mealType) {
+                case 'breakfast':
+                  return theme === 'light' 
+                    ? 'linear-gradient(135deg, #f97316, #ea580c)'
+                    : 'linear-gradient(135deg, #fb923c, #f97316)';
+                case 'lunch':
+                  return theme === 'light' 
+                    ? 'linear-gradient(135deg, #d97706, #b45309)'
+                    : 'linear-gradient(135deg, #fbbf24, #d97706)';
+                case 'dinner':
+                  return theme === 'light' 
+                    ? 'linear-gradient(135deg, #9333ea, #7c3aed)'
+                    : 'linear-gradient(135deg, #a855f7, #9333ea)';
+                case 'other':
+                  return theme === 'light' 
+                    ? 'linear-gradient(135deg, #6b7280, #4b5563)'
+                    : 'linear-gradient(135deg, #9ca3af, #6b7280)';
+                default:
+                  return '#6b7280';
+              }
+            })(),
+            color: 'white',
+            backdropFilter: 'blur(10px)',
+            WebkitBackdropFilter: 'blur(10px)',
+          }}
+      >
+        <div className="flex items-start space-x-2">
+          <span className="text-base">{mealInfo.emoji}</span>
+          <div className="flex-1">
+            {/* 제목과 수정 버튼을 같은 줄에 배치 */}
+            <div className="flex items-center justify-between">
+              <div className="font-semibold text-sm">{mealInfo.title}</div>
+              
+              {/* 수정 아이콘 */}
+              <button
+                onClick={(e) => {
+                  e.stopPropagation();
+                  onEdit();
+                }}
+                className="p-1.5 hover:bg-white/20 rounded-full transition-all duration-200 hover:scale-110 active:scale-95"
+              >
+                <svg 
+                  className="w-3.5 h-3.5 text-white/90 hover:text-white" 
+                  fill="none" 
+                  stroke="currentColor" 
+                  viewBox="0 0 24 24"
+                >
+                  <path 
+                    strokeLinecap="round" 
+                    strokeLinejoin="round" 
+                    strokeWidth={2.5} 
+                    d="M15.232 5.232l3.536 3.536m-2.036-5.036a2.5 2.5 0 113.536 3.536L6.5 21.036H3v-3.572L16.732 3.732z" 
+                  />
+                </svg>
+              </button>
+            </div>
+            
+            <div className="text-xs opacity-90 leading-relaxed mt-0.5 whitespace-pre-wrap">
+              {message}
+            </div>
+          </div>
+        </div>
+      </div>
+      </div>
+    </>
   );
 }
