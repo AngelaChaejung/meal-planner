@@ -57,7 +57,7 @@ const MEAL_INFO = {
   breakfast: { 
     title: '아침', 
     shortTitle: '아',
-    emoji: '🌅',
+    emoji: '☀️',
     color: 'text-orange-500 bg-orange-500/10 dark:text-orange-400 dark:bg-orange-400/10',
     dotColor: 'bg-orange-500 dark:bg-orange-400'
   },
@@ -1393,7 +1393,7 @@ function MealTypeDropdown({
 
       {/* 드롭다운 메뉴 */}
       {isOpen && availableTypes.length > 0 && (
-        <div className="absolute top-full left-0 w-full min-w-[130px] bg-card border border-border rounded-md shadow-lg z-40 mt-1 backdrop-blur-none">
+        <div className="absolute top-full left-0 w-full min-w-[130px] bg-card border border-border rounded-md shadow-lg z-[60] mt-1 backdrop-blur-none">
           {availableTypes.map(({ type, info }) => (
             <button
               key={type}
@@ -1464,11 +1464,11 @@ function MealSnackbar({
       />
       
       {/* 스낵바 */}
-      <div className="fixed left-1/2 transform -translate-x-1/2 z-[100] animate-in slide-in-from-top-2 duration-300 px-4" style={{ top: '30%' }}>
+      <div className="fixed left-1/2 transform -translate-x-1/2 z-[100] animate-in slide-in-from-top-2 duration-300" style={{ top: '25%' }}>
         <div 
-          className="px-3 py-2 rounded-lg shadow-lg w-full relative"
+          className="px-3 py-2 rounded-lg shadow-lg relative mx-4 w-[75vw] max-[430px]:w-[75vw] min-[431px]:w-[520px]"
           style={{
-            maxWidth: window.innerWidth <= 430 ? '65vw' : '500px',
+            minWidth: '200px',
             background: (() => {
               switch (mealType) {
                 case 'breakfast':
@@ -1496,12 +1496,13 @@ function MealSnackbar({
             WebkitBackdropFilter: 'blur(10px)',
           }}
       >
-        <div className="flex items-start space-x-2">
-          <span className="text-base">{mealInfo.emoji}</span>
+        <div className="flex items-start space-x-2 w-full">
           <div className="flex-1">
             {/* 제목과 수정 버튼을 같은 줄에 배치 */}
             <div className="flex items-center justify-between">
-              <div className="font-semibold text-sm">{mealInfo.title}</div>
+            <div className="flex items-center gap-2">
+          <span className="text-sm">{mealInfo.emoji}</span>
+              <div className="font-semibold text-sm">{mealInfo.title}</div></div>
               
               {/* 수정 아이콘 */}
               <button
@@ -1527,7 +1528,7 @@ function MealSnackbar({
               </button>
             </div>
             
-            <div className="text-xs opacity-90 leading-relaxed mt-0.5 whitespace-pre-wrap">
+            <div className="text-sm opacity-90 leading-relaxed mt-0.5 whitespace-pre-wrap w-full">
               {message}
             </div>
           </div>
