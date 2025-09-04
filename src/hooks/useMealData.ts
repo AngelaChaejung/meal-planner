@@ -1,5 +1,6 @@
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { mealService, weeklyMemoService, type Meal, type WeeklyMemo } from '@/lib/supabase';
+import type { MealType } from '@/types/meal';
 
 // 식사 데이터를 가져오는 hook
 export function useMeals(startDateStr: string, endDateStr: string) {
@@ -46,8 +47,11 @@ export function useMealMutation() {
   const queryClient = useQueryClient();
   
   return useMutation({
-    mutationFn: (meal: { date: string; mealType: string; memo: string; id?: string }) => 
-      mealService.upsertMeal(meal),
+    mutationFn: (meal: { date: string; mealType: MealType; memo: string; id?: string }) => 
+      mealService.upsertMeal({
+        ...meal,
+        meal_type: meal.mealType
+      }),
     onSuccess: (data, variables) => {
       // 관련된 쿼리들을 무효화해서 자동 refetch
       queryClient.invalidateQueries({ queryKey: ['meals'] });
@@ -81,7 +85,10 @@ export function useWeeklyMemoMutation() {
   
   return useMutation({
     mutationFn: (memo: { weekStartDate: string; memo: string; id?: string }) => 
-      weeklyMemoService.upsertWeeklyMemo(memo),
+      weeklyMemoService.upsertWeeklyMemo({
+        ...memo,
+        week_start_date: memo.weekStartDate
+      }),
     onSuccess: (data, variables) => {
       queryClient.invalidateQueries({ queryKey: ['weeklyMemos'] });
       console.log('✅ 주간 메모 저장 성공:', data);
