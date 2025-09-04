@@ -1451,20 +1451,29 @@ function MealSnackbar({
   onClose: () => void;
   onEdit: () => void;
 }) {
-  if (!show) return null;
-
   const mealInfo = MEAL_INFO[mealType];
   
   return (
     <>
       {/* 배경 오버레이 - 외부 클릭 감지 */}
-      <div 
-        className="fixed inset-0 z-[99]" 
-        onClick={onClose}
-      />
+      {show && (
+        <div 
+          className="fixed inset-0 z-[99] transition-opacity duration-300" 
+          style={{ opacity: show ? 1 : 0 }}
+          onClick={onClose}
+        />
+      )}
       
       {/* 스낵바 */}
-      <div className="fixed left-1/2 transform -translate-x-1/2 z-[100] animate-in slide-in-from-top-2 duration-300" style={{ top: '25%' }}>
+      <div 
+        className="fixed left-1/2 z-[100] transition-all duration-500 ease-out pointer-events-none" 
+        style={{ 
+          top: show ? '32px' : '0px',
+          opacity: show ? 1 : 0,
+          transform: `translateX(-50%) translateY(${show ? '0' : '-20px'})`,
+          pointerEvents: show ? 'auto' : 'none'
+        }}
+      >
         <div 
           className="px-3 py-2 rounded-lg shadow-lg relative mx-4 w-[75vw] max-[430px]:w-[75vw] min-[431px]:w-[520px]"
           style={{
