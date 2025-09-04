@@ -1,0 +1,31 @@
+{
+  "name": "Angela & Bob's 식단관리",
+  "short_name": "식단관리",
+  "description": "욱 앤 채둥의 식단관리랄까",
+  "start_url": "/",
+  "display": "standalone",
+  "background_color": "#111827",
+  "theme_color": "#111827",
+  "orientation": "portrait",
+  "scope": "/",
+  "icons": [
+    {
+      "src": "/icon?<generated>",
+      "type": "image/png",
+      "sizes": "any",
+      "purpose": "any"
+    },
+    {
+      "src": "/icon-192?<generated>",
+      "type": "image/png", 
+      "sizes": "192x192"
+    },
+    {
+      "src": "/icon-512?<generated>",
+      "type": "image/png",
+      "sizes": "512x512"
+    }
+  ],
+  "categories": ["lifestyle", "health"],
+  "lang": "ko"
+}

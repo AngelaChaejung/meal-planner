@@ -15,6 +15,23 @@ const geistMono = Geist_Mono({
 export const metadata: Metadata = {
   title: "Angela & Bob 's Bob",
   description: "욱 앤 채둥의 식단관리랄까",
+  manifest: "/manifest.json",
+  appleWebApp: {
+    capable: true,
+    statusBarStyle: "default",
+    title: "식단관리",
+  },
+  formatDetection: {
+    telephone: false,
+  },
+  themeColor: "#111827",
+  viewport: {
+    width: "device-width",
+    initialScale: 1,
+    maximumScale: 1,
+    userScalable: false,
+    viewportFit: "cover",
+  },
 };
 
 export default function RootLayout({
@@ -23,16 +40,10 @@ export default function RootLayout({
   children: React.ReactNode;
 }>) {
   return (
-    <html lang="ko" className="dark" suppressHydrationWarning>
-      <head>
-        <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, viewport-fit=cover, user-scalable=no" />
-        <meta name="theme-color" content="#111827" />
-        <meta name="mobile-web-app-capable" content="yes" />
-        <meta name="apple-mobile-web-app-capable" content="yes" />
-        <meta name="apple-mobile-web-app-status-bar-style" content="default" />
-      </head>
+    <html lang="ko" suppressHydrationWarning>
+      <head></head>
       <body
-        className={`${geistSans.variable} ${geistMono.variable} antialiased touch-manipulation transition-colors duration-300 dark`}
+        className={`${geistSans.variable} ${geistMono.variable} antialiased touch-manipulation transition-colors duration-300`}
       >
         {children}
       </body>
