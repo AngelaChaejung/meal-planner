@@ -47,11 +47,13 @@ export function useMealMutation() {
   const queryClient = useQueryClient();
   
   return useMutation({
-    mutationFn: (meal: { date: string; mealType: MealType; memo: string; id?: string }) => 
-      mealService.upsertMeal({
-        ...meal,
-        meal_type: meal.mealType
-      }),
+    mutationFn: (meal: { date: string; mealType: MealType; memo: string; id?: string }) => {
+      const { mealType, ...mealWithoutMealType } = meal;
+      return mealService.upsertMeal({
+        ...mealWithoutMealType,
+        meal_type: mealType
+      });
+    },
     onSuccess: (data, variables) => {
       // 관련된 쿼리들을 무효화해서 자동 refetch
       queryClient.invalidateQueries({ queryKey: ['meals'] });
@@ -84,11 +86,13 @@ export function useWeeklyMemoMutation() {
   const queryClient = useQueryClient();
   
   return useMutation({
-    mutationFn: (memo: { weekStartDate: string; memo: string; id?: string }) => 
-      weeklyMemoService.upsertWeeklyMemo({
-        ...memo,
-        week_start_date: memo.weekStartDate
-      }),
+    mutationFn: (memo: { weekStartDate: string; memo: string; id?: string }) => {
+      const { weekStartDate, ...memoWithoutWeekStartDate } = memo;
+      return weeklyMemoService.upsertWeeklyMemo({
+        ...memoWithoutWeekStartDate,
+        week_start_date: weekStartDate
+      });
+    },
     onSuccess: (data, variables) => {
       queryClient.invalidateQueries({ queryKey: ['weeklyMemos'] });
       console.log('✅ 주간 메모 저장 성공:', data);
