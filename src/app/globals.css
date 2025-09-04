@@ -49,6 +49,9 @@ body {
   color: var(--foreground);
   font-family: system-ui, -apple-system, sans-serif;
 }
+button {
+  cursor: pointer;
+}
 
 /* 스크롤바 스타일 */
 ::-webkit-scrollbar {

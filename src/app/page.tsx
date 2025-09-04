@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect, useMemo, useRef } from 'react';
+import { useState, useEffect, useMemo, useRef, useCallback } from 'react';
 import { 
   formatDateKorean, 
   getTwoWeekDates, 
@@ -79,6 +79,7 @@ export default function HomePage() {
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [isLoading, setIsLoading] = useState(false);
+  const [isRefreshing, setIsRefreshing] = useState(false);
   
   // 주간 메모 상태
   const [weeklyMemos, setWeeklyMemos] = useState<{[weekStartDate: string]: WeeklyMemo}>({});
@@ -143,66 +144,75 @@ export default function HomePage() {
     };
   }, [currentPeriodStart]);
 
+  // 데이터 로드 함수 (useCallback으로 분리하여 새로고침에서도 재사용)
+  const loadData = useCallback(async (isRefresh: boolean = false) => {
+    try {
+      setError(null);
+      if (isRefresh) {
+        setIsRefreshing(true);
+      } else {
+        setIsLoading(true);
+      }
+      
+      console.log('📊 DB에서 데이터 로드 시작:', startDateStr, '~', endDateStr);
+      
+      // 식사 데이터 로드
+      const mealsData = await mealService.getMealsByDateRange(startDateStr, endDateStr);
+      
+      // 주간 메모 데이터 로드
+      const memoPromises = weekStartDates.map(async (weekStart) => {
+        try {
+          const memo = await weeklyMemoService.getWeeklyMemo(weekStart);
+          return { weekStart, memo };
+        } catch (error) {
+          console.log('주간 메모 로드 중 오류 (정상적일 수 있음):', error);
+          return { weekStart, memo: null };
+        }
+      });
+      const memoResults = await Promise.all(memoPromises);
+      
+      setMeals(mealsData);
+      
+      // 주간 메모 상태 업데이트
+      const memosMap: {[key: string]: WeeklyMemo} = {};
+      memoResults.forEach(({ weekStart, memo }) => {
+        if (memo) {
+          memosMap[weekStart] = memo;
+        }
+      });
+      setWeeklyMemos(memosMap);
+      
+      console.log('✅ 데이터 로드 완료:', mealsData.length, '개 식사,', Object.keys(memosMap).length, '개 주간 메모');
+    } catch (err) {
+      console.error('❌ 데이터 로드 오류:', err);
+      setError('데이터를 불러오는데 실패했습니다.');
+    } finally {
+      if (isRefresh) {
+        setIsRefreshing(false);
+      } else {
+        setIsLoading(false);
+      }
+    }
+  }, [startDateStr, endDateStr, weekStartDates]);
+
   // Supabase에서 데이터 로드
   useEffect(() => {
     let isCancelled = false;
     
-    const loadData = async () => {
-      try {
-        setError(null);
-        setIsLoading(true);
-        
-        console.log('📊 DB에서 데이터 로드 시작:', startDateStr, '~', endDateStr);
-        
-        // 식사 데이터 로드
-        const mealsData = await mealService.getMealsByDateRange(startDateStr, endDateStr);
-        
-        // 주간 메모 데이터 로드
-        const memoPromises = weekStartDates.map(async (weekStart) => {
-          try {
-            const memo = await weeklyMemoService.getWeeklyMemo(weekStart);
-            return { weekStart, memo };
-          } catch (error) {
-            console.log('주간 메모 로드 중 오류 (정상적일 수 있음):', error);
-            return { weekStart, memo: null };
-          }
-        });
-        const memoResults = await Promise.all(memoPromises);
-        
-        if (!isCancelled) {
-          setMeals(mealsData);
-          
-          // 주간 메모 상태 업데이트
-          const memosMap: {[key: string]: WeeklyMemo} = {};
-          memoResults.forEach(({ weekStart, memo }) => {
-            if (memo) {
-              memosMap[weekStart] = memo;
-            }
-          });
-          setWeeklyMemos(memosMap);
-          
-          console.log('✅ 데이터 로드 완료:', mealsData.length, '개 식사,', Object.keys(memosMap).length, '개 주간 메모');
-        }
-      } catch (err) {
-        if (!isCancelled) {
-          console.error('❌ 데이터 로드 오류:', err);
-          setError('데이터를 불러오는데 실패했습니다.');
-        }
-      } finally {
-        if (!isCancelled) {
-          setIsLoading(false);
-        }
+    const loadInitialData = async () => {
+      if (!isCancelled) {
+        await loadData(false);
       }
     };
 
-    loadData();
+    loadInitialData();
     
     // cleanup function
     return () => {
       isCancelled = true;
       setIsLoading(false);
     };
-  }, [startDateStr, endDateStr, weekStartDates]); // 주간 메모를 위한 의존성 추가
+  }, [loadData]);
 
   // 네비게이션 핸들러 (역동적 스크롤 애니메이션)
   const handlePreviousPeriod = () => {
@@ -441,10 +451,11 @@ export default function HomePage() {
           <div className="text-base text-foreground mb-1">오류 발생</div>
           <div className="text-xs text-foreground/60 mb-4">{error}</div>
           <button
-            onClick={() => window.location.reload()}
+            onClick={() => loadData(true)}
             className="bg-primary text-primary-foreground px-3 py-1.5 rounded text-sm hover:opacity-90 transition-opacity"
+            disabled={isRefreshing}
           >
-            새로고침
+            {isRefreshing ? '새로고침 중...' : '새로고침'}
           </button>
         </div>
       </div>
@@ -510,22 +521,45 @@ export default function HomePage() {
               </button>
             </div>
             
-            {/* 테마 토글 버튼 */}
-            <button
-              onClick={toggleTheme}
-              className="p-1.5 text-foreground/60 hover:text-foreground transition-colors rounded-full hover:bg-secondary"
-              title={theme === 'dark' ? '라이트 모드로 전환' : '다크 모드로 전환'}
-            >
-              {theme === 'dark' ? (
-                <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 3v1m0 16v1m9-9h-1M4 12H3m15.364 6.364l-.707-.707M6.343 6.343l-.707-.707m12.728 0l-.707.707M6.343 17.657l-.707.707M16 12a4 4 0 11-8 0 4 4 0 018 0z" />
+            <div className="flex items-center gap-2">
+              {/* 새로고침 버튼 */}
+              <button
+                onClick={() => loadData(true)}
+                className={`p-1.5 transition-colors rounded-full hover:bg-secondary ${
+                  isRefreshing 
+                    ? 'text-foreground/40 cursor-not-allowed' 
+                    : 'text-foreground/60 hover:text-foreground'
+                }`}
+                title={isRefreshing ? "새로고침 중..." : "새로고침"}
+                disabled={isRefreshing}
+              >
+                <svg 
+                  className={`w-4 h-4 ${isRefreshing ? 'animate-spin' : ''}`} 
+                  fill="none" 
+                  stroke="currentColor" 
+                  viewBox="0 0 24 24"
+                >
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
                 </svg>
-              ) : (
-                <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M20.354 15.354A9 9 0 018.646 3.646 9.003 9.003 0 0012 21a9.003 9.003 0 008.354-5.646z" />
-                </svg>
-              )}
-            </button>
+              </button>
+
+              {/* 테마 토글 버튼 */}
+              <button
+                onClick={toggleTheme}
+                className="p-1.5 text-foreground/60 hover:text-foreground transition-colors rounded-full hover:bg-secondary"
+                title={theme === 'dark' ? '라이트 모드로 전환' : '다크 모드로 전환'}
+              >
+                {theme === 'dark' ? (
+                  <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 3v1m0 16v1m9-9h-1M4 12H3m15.364 6.364l-.707-.707M6.343 6.343l-.707-.707m12.728 0l-.707.707M6.343 17.657l-.707.707M16 12a4 4 0 11-8 0 4 4 0 018 0z" />
+                  </svg>
+                ) : (
+                  <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M20.354 15.354A9 9 0 018.646 3.646 9.003 9.003 0 0012 21a9.003 9.003 0 008.354-5.646z" />
+                  </svg>
+                )}
+              </button>
+            </div>
           </div>
 
           {/* 기간 표시 */}
@@ -870,6 +904,7 @@ export default function HomePage() {
             setIsModalOpen(false);
             setSelectedMeal(null);
           }}
+          theme={theme}
         />
       )}
 
@@ -919,7 +954,7 @@ function WeeklyMemoCell({
         isEmpty 
           ? 'bg-card/30 border border-border/30 opacity-60' 
           : 'bg-card border border-border hover:bg-card/80'
-      } rounded-lg min-h-[100px] p-1.5 transition-all duration-300 hover:scale-[1.02] text-left`}
+      } rounded-lg min-h-[100px] p-1.5 transition-all duration-300 hover:scale-[1.02] text-left flex flex-col`}
       style={isEmpty ? {} : {
         background: theme === 'light'
           ? 'linear-gradient(135deg, rgba(251, 146, 60, 0.03), rgba(245, 158, 11, 0.03), rgba(251, 191, 36, 0.03))'
@@ -928,19 +963,19 @@ function WeeklyMemoCell({
       }}
     >
       {/* 주간 표시 */}
-      <div className="text-center mb-2">
+      <div className="mb-2 flex-shrink-0">
         <div className={`text-[10px] font-medium ${
           theme === 'light' ? 'text-orange-600' : 'text-cyan-500'
         }`}>
           memo
         </div>
-        <div className="text-[10px] text-foreground/60 mt-0.5">
+        {/* <div className="text-[10px] text-foreground/60 mt-0.5">
           {weekRange}
-        </div>
+        </div> */}
       </div>
 
       {/* 메모 내용 */}
-      <div className="space-y-1">
+      <div className="space-y-1 flex-1">
         {memo ? (
           <div 
             className="text-[10px] text-foreground/80 leading-relaxed overflow-hidden"
@@ -992,18 +1027,22 @@ function WeeklyMemoModal({
 
   return (
     <div 
-      className="fixed inset-0 bg-black/50 z-50 flex items-end"
+      className="fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-4"
       onClick={onClose}
     >
       <div 
-        className="bg-card w-full max-h-[80vh] rounded-t-xl border-t border-border"
+        className="bg-card max-w-md w-full max-h-[90vh] overflow-hidden border border-border"
+        style={{
+          borderRadius: '10px',
+          boxShadow: '0 10px 25px rgba(0, 0, 0, 0.15)'
+        }}
         onClick={(e) => e.stopPropagation()}
       >
         {/* 모달 헤더 */}
         <div className="flex items-center justify-between p-4 border-b border-border">
           <div>
             <h2 className="text-base font-semibold text-card-foreground">
-              📝 주간 메모 {memoData ? '편집' : '추가'}
+              주간 메모 {memoData ? '편집' : '추가'}
             </h2>
             <p className="text-xs text-card-foreground/60 mt-0.5">{weekRange}</p>
           </div>
@@ -1026,7 +1065,7 @@ function WeeklyMemoModal({
             <textarea
               value={memo}
               onChange={(e) => setMemo(e.target.value)}
-              placeholder="사랑을 담은 메모를 적어보세용 🩷"
+              placeholder="사랑을 담은 메모를 적어보세요"
               rows={6}
               className="w-full px-3 py-2.5 bg-input border border-border rounded-lg text-card-foreground placeholder-card-foreground/50 focus:ring-1 focus:ring-ring focus:border-ring outline-none resize-none text-base"
             />
@@ -1034,17 +1073,11 @@ function WeeklyMemoModal({
 
           {/* 삭제 버튼 (편집 시에만) */}
           {memoData && onDelete && (
-            <div className="pt-2 border-t border-border">
-              <button
-                onClick={() => {
-                  if (confirm('이 주간 메모를 삭제하시겠습니까?')) {
-                    onDelete();
-                  }
-                }}
-                className="px-3 py-1.5 text-sm text-red-600 bg-red-500/10 hover:bg-red-500/20 hover:text-red-700 transition-all duration-200 rounded-md border border-red-500/20 hover:border-red-500/30"
-              >
-                🗑️ 삭제하기
-              </button>
+            <div className="pt-2">
+              <DeleteButton
+                onDelete={onDelete}
+                confirmMessage="이 주간 메모를 삭제하시겠습니까?"
+              />
             </div>
           )}
         </div>
@@ -1068,7 +1101,7 @@ function WeeklyMemoModal({
               color: 'white'
             }}
           >
-            {memoData ? '수정' : '추가'}
+            {memoData ? '수정' : '저장'}
           </button>
         </div>
       </div>
@@ -1100,22 +1133,12 @@ function DayCell({
   const dayNames = ['일', '월', '화', '수', '목', '금', '토'];
   const dayName = dayNames[dayOfWeek];
 
-  // 오늘 날짜 스타일 
-  const todayStyle = isToday ? (
-    theme === 'light' ? {
-      background: isEmpty 
-        ? 'linear-gradient(135deg, rgba(251, 146, 60, 0.05), rgba(245, 158, 11, 0.05), rgba(251, 191, 36, 0.05))'
-        : 'linear-gradient(135deg, rgba(251, 146, 60, 0.08), rgba(245, 158, 11, 0.08), rgba(251, 191, 36, 0.08))',
-      boxShadow: '0 0 0 1px rgba(251, 146, 60, 0.3), 0 0 20px rgba(251, 146, 60, 0.15), inset 0 1px 0 rgba(255, 255, 255, 0.1)',
-      border: '1px solid rgba(251, 146, 60, 0.2)'
-    } : {
-      background: isEmpty 
-        ? 'linear-gradient(135deg, rgba(6, 182, 212, 0.05), rgba(14, 165, 233, 0.05), rgba(59, 130, 246, 0.05))'
-        : 'linear-gradient(135deg, rgba(6, 182, 212, 0.08), rgba(14, 165, 233, 0.08), rgba(59, 130, 246, 0.08))',
-      boxShadow: '0 0 0 1px rgba(6, 182, 212, 0.3), 0 0 20px rgba(6, 182, 212, 0.15), inset 0 1px 0 rgba(255, 255, 255, 0.1)',
-      border: '1px solid rgba(6, 182, 212, 0.2)'
-    }
-  ) : {};
+  // 오늘 날짜 스타일 (단순하게 변경)
+  const todayBorderClass = isToday ? (
+    theme === 'light' 
+      ? 'border-orange-400 border-2 bg-orange-50/30' 
+      : 'border-cyan-400 border-2 bg-cyan-950/30'
+  ) : '';
 
   return (
     <div 
@@ -1123,33 +1146,19 @@ function DayCell({
         isEmpty 
           ? 'bg-card/30 border border-border/30' // 빈 박스 스타일
           : 'bg-card border border-border hover:bg-card/80' // 일반 스타일
-      } rounded-lg min-h-[100px] p-1.5 transition-all duration-300 ${
-        isToday ? 'relative overflow-hidden' : ''
-      }`}
-      style={todayStyle}
+      } rounded-lg min-h-[100px] p-1.5 transition-all duration-300 ${todayBorderClass}`}
     >
-      {/* 오늘 글리터 효과 */}
-      {isToday && (
-        <div 
-          className="absolute inset-0 opacity-20 rounded-lg"
-          style={{
-            background: theme === 'light'
-              ? 'radial-gradient(circle at 30% 20%, rgba(251, 146, 60, 0.1) 0%, transparent 50%), radial-gradient(circle at 70% 80%, rgba(245, 158, 11, 0.1) 0%, transparent 50%), radial-gradient(circle at 50% 50%, rgba(251, 191, 36, 0.1) 0%, transparent 50%)'
-              : 'radial-gradient(circle at 30% 20%, rgba(6, 182, 212, 0.1) 0%, transparent 50%), radial-gradient(circle at 70% 80%, rgba(14, 165, 233, 0.1) 0%, transparent 50%), radial-gradient(circle at 50% 50%, rgba(59, 130, 246, 0.1) 0%, transparent 50%)'
-          }}
-        />
-      )}
 
       {/* 날짜 숫자와 요일 */}
-      <div className={`text-center mb-1.5 relative z-10 ${
+      <div className={`text-center mb-1.5 ${
         isToday ? 'font-semibold' : 'text-foreground'
       }`}>
         <span 
           className={`text-sm ${
             isToday 
               ? (theme === 'light'
-                  ? 'bg-gradient-to-r from-orange-600 via-amber-500 to-yellow-500 bg-clip-text text-transparent font-bold'
-                  : 'bg-gradient-to-r from-cyan-400 via-sky-500 to-blue-500 bg-clip-text text-transparent font-bold')
+                  ? 'text-orange-600 font-bold'
+                  : 'text-cyan-400 font-bold')
               : ''
           }`}
         >
@@ -1234,7 +1243,8 @@ function MealModal({
   mealData, 
   onSave, 
   onDelete,
-  onClose 
+  onClose,
+  theme
 }: {
   date: string;
   mealType: MealType;
@@ -1242,6 +1252,7 @@ function MealModal({
   onSave: (data: { memo: string }) => void;
   onDelete?: () => void;
   onClose: () => void;
+  theme: 'light' | 'dark';
 }) {
   const [memo, setMemo] = useState(mealData?.memo || '');
 
@@ -1299,16 +1310,10 @@ function MealModal({
           {/* 삭제 버튼 (편집 시에만) */}
           {mealData && onDelete && (
             <div className="pt-2 border-t border-border">
-              <button
-                onClick={() => {
-                  if (confirm('이 식사를 삭제하시겠습니까?')) {
-                    onDelete();
-                  }
-                }}
-                className="px-3 py-1.5 text-sm text-red-600 bg-red-500/10 hover:bg-red-500/20 hover:text-red-700 transition-all duration-200 rounded-md border border-red-500/20 hover:border-red-500/30"
-              >
-                🗑️ 삭제하기
-              </button>
+              <DeleteButton
+                onDelete={onDelete}
+                confirmMessage="이 식사를 삭제하시겠습니까?"
+              />
             </div>
           )}
         </div>
@@ -1324,7 +1329,13 @@ function MealModal({
           <button
             onClick={handleSave}
             disabled={!memo.trim()}
-            className="flex-1 py-2.5 px-4 bg-primary text-primary-foreground rounded-lg font-medium disabled:opacity-50 disabled:cursor-not-allowed hover:opacity-90 transition-opacity text-sm"
+            className="flex-1 py-2.5 px-4 rounded-lg font-medium disabled:opacity-50 disabled:cursor-not-allowed transition-all text-sm"
+            style={{
+              background: theme === 'light'
+                ? 'linear-gradient(135deg, rgba(251, 146, 60, 0.9), rgba(245, 158, 11, 0.9))'
+                : 'linear-gradient(135deg, rgba(6, 182, 212, 0.9), rgba(14, 165, 233, 0.9))',
+              color: 'white'
+            }}
           >
             {mealData ? '수정' : '추가'}
           </button>
@@ -1408,5 +1419,31 @@ function MealTypeDropdown({
         </div>
       )}
     </div>
+  );
+}
+
+// 재사용 가능한 삭제 버튼 컴포넌트
+function DeleteButton({
+  onDelete,
+  confirmMessage,
+  className = ""
+}: {
+  onDelete: () => void;
+  confirmMessage: string;
+  className?: string;
+}) {
+  const handleDelete = () => {
+    if (confirm(confirmMessage)) {
+      onDelete();
+    }
+  };
+
+  return (
+    <button
+      onClick={handleDelete}
+      className={`px-3 py-1.5 text-sm text-red-600 bg-red-500/20 hover:bg-red-500/30 hover:text-red-700 transition-all duration-200 rounded-md hover:border-red-500/30 ${className}`}
+    >
+      삭제하기
+    </button>
   );
 }

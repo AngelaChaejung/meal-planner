@@ -16,10 +16,13 @@ export const metadata: Metadata = {
   title: "Angela & Bob 's Bob",
   description: "욱 앤 채둥의 식단관리랄까",
   manifest: "/manifest.json",
+  icons: {
+    apple: '/icon.png',
+  },
   appleWebApp: {
     capable: true,
-    statusBarStyle: "default",
-    title: "식단관리",
+    statusBarStyle: "black-translucent",
+    title: "욱 & 채둥 식단관리",
   },
   formatDetection: {
     telephone: false,
