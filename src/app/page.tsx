@@ -1112,8 +1112,16 @@ function DayCell({
 }) {
   const dateObj = new Date(date);
   const dayNumber = dateObj.getDate();
+  
+  // 오늘 날짜를 정확히 비교 (YYYY-MM-DD 형식으로 비교)
   const today = new Date();
-  const isToday = formatDate(dateObj) === formatDate(today);
+  const todayStr = formatDate(today);
+  const isToday = date === todayStr;
+  
+  // 디버깅용 로그 (오늘 날짜일 때만)
+  if (isToday) {
+    console.log('🔍 오늘 날짜 디버깅:', { date, todayStr, isToday, theme });
+  }
   
   // 요일 계산 (0: 일요일, 1: 월요일, ..., 6: 토요일)
   const dayOfWeek = dateObj.getDay();
